@@ -1,16 +1,15 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 from pymongo import MongoClient
 from bson import ObjectId
-import requests
 import snowflake.connector
 import json
 import io
+import random
 from PIL import Image
-import os
-from datetime import datetime # <--- NEW IMPORT FOR TIME
+from datetime import datetime
 
 app = FastAPI()
 
@@ -24,7 +23,6 @@ app.add_middleware(
 # --- CONFIGURATION ---
 GEMINI_KEY = "AIzaSyC3a7jsee-wfWn19_v4poO5tmUqlaRAm6Q"
 MONGO_URI = "mongodb+srv://utkarshkishore:PKSAUhaO9XBaKMAo@cluster0.lonmfxy.mongodb.net/?appName=Cluster0"
-ELEVENLABS_KEY = "sk_43e03a5dc79c5069b9e315345887af1046e100c550e2a8d7"
 SNOW_USER = "UTKARSHKISHORE"
 SNOW_PASS = "@Helsinki12345"
 SNOW_ACC = "invtjyf-aeb83705"
@@ -41,18 +39,12 @@ try:
 except:
     print("⚠️ MongoDB Failed to Connect")
 
-def ask_snowflake(question):
-    try:
-        ctx = snowflake.connector.connect(
-            user=SNOW_USER, password=SNOW_PASS, account=SNOW_ACC
-        )
-        cs = ctx.cursor()
-        query = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3-70b', '{question}')"
-        cs.execute(query)
-        result = cs.fetchone()[0]
-        return result
-    except Exception as e:
-        return f"Snowflake Error: {str(e)}"
+# --- MOCK DRIVERS (Simulating GPS) ---
+MOCK_DRIVERS = [
+    {"id": "d1", "name": "John (Volunteer)", "distance": "0.5 miles", "eta": "5 mins"},
+    {"id": "d2", "name": "Sarah (Logistics)", "distance": "1.2 miles", "eta": "12 mins"},
+    {"id": "d3", "name": "Mike (Food Bank)", "distance": "2.8 miles", "eta": "20 mins"},
+]
 
 # --- API ROUTES ---
 
@@ -60,10 +52,20 @@ def ask_snowflake(question):
 def home():
     return {"status": "ResQ-Chain Backend is Live"}
 
+@app.get("/get_nearby_drivers")
+def get_nearby_drivers():
+    # In a real app, we would calculate distance here.
+    # For hackathon, we shuffle them to make it look dynamic.
+    drivers = MOCK_DRIVERS.copy()
+    random.shuffle(drivers)
+    return {"status": "success", "data": drivers}
+
 @app.post("/analyze_donation")
 async def analyze_donation(
         file: UploadFile = File(...),
-        address: str = Form(...)
+        address: str = Form(...),
+        donor_name: str = Form(...),
+        donor_phone: str = Form(...)
 ):
     try:
         image_bytes = await file.read()
@@ -74,14 +76,8 @@ async def analyze_donation(
         - item_name (string)
         - freshness_score (0-100 number)
         - expiry_hours (number)
-        - safety_warning (string or null)
-        - action_recommendation (string): Select exactly one full sentence:
-            * "Fruit sellers can sell this at a Premium Price" (if freshness > 85)
-            * "Sellers should apply a 25% Discount to sell fast" (if freshness is 70-85)
-            * "Sellers should apply a clearance Sale like a discount of 50% " (if freshness is 50-69)
-            * "Sellers can donate this to a Food Bank immediately" (if freshness is 30-49)
-            * "Compost: Do not sell or donate" (if freshness < 30)
-        - reason (string): A short explanation.
+        - action_recommendation (string): Short sentence (Sell/Donate/Compost).
+        - reason (string): Short explanation.
         """
 
         response = vision_model.generate_content([prompt, img])
@@ -89,9 +85,12 @@ async def analyze_donation(
         data = json.loads(json_str)
 
         # --- ADD METADATA ---
+        data["donor_name"] = donor_name
+        data["donor_phone"] = donor_phone
         data["address"] = address
-        data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S") # Real Time
-        data["status"] = "Pending" # Default status
+        data["timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        data["status"] = "Draft" # Wait for driver selection
+        data["assigned_driver"] = None
 
         # Insert into Mongo
         insert_result = donations_col.insert_one(data)
@@ -103,50 +102,49 @@ async def analyze_donation(
         print(f"Error: {e}")
         return {"status": "error", "error": str(e)}
 
-@app.get("/all_donations")
-def get_all_donations():
-    try:
-        items = list(donations_col.find().sort("_id", -1))
-        for item in items:
-            item["_id"] = str(item["_id"])
-        return {"status": "success", "data": items}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+class AssignDriverRequest(BaseModel):
+    donation_id: str
+    driver_name: str
+    driver_eta: str
 
-# --- NEW: UPDATE STATUS INSTEAD OF DELETE ---
-class IDRequest(BaseModel):
-    id: str
+@app.post("/assign_driver")
+def assign_driver(req: AssignDriverRequest):
+    donations_col.update_one(
+        {"_id": ObjectId(req.donation_id)},
+        {"$set": {
+            "status": "Requested",
+            "assigned_driver": req.driver_name,
+            "eta": req.driver_eta
+        }}
+    )
+    return {"status": "assigned"}
 
-@app.post("/pickup_donation")
-def pickup_donation(req: IDRequest):
-    try:
-        # Update status to 'Picked Up'
-        donations_col.update_one(
-            {"_id": ObjectId(req.id)},
-            {"$set": {"status": "Picked Up"}}
-        )
-        return {"status": "updated", "id": req.id}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+@app.get("/driver_requests")
+def driver_requests():
+    # Only show items where a driver has been requested
+    items = list(donations_col.find({"status": "Requested"}).sort("_id", -1))
+    for item in items:
+        item["_id"] = str(item["_id"])
+    return {"status": "success", "data": items}
 
-# --- EXTRAS ---
-class TextRequest(BaseModel):
-    text: str
+class DriverResponseRequest(BaseModel):
+    donation_id: str
+    response: str # "Accepted" or "Declined"
 
-@app.post("/generate_alert")
-def generate_alert(req: TextRequest):
-    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
-    headers = {"xi-api-key": ELEVENLABS_KEY, "Content-Type": "application/json"}
-    payload = {"text": req.text, "model_id": "eleven_monolingual_v1"}
-    try:
-        response = requests.post(url, json=payload, headers=headers)
-        with open("alert.mp3", "wb") as f:
-            f.write(response.content)
-        return {"status": "Audio generated"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
+@app.post("/driver_respond")
+def driver_respond(req: DriverResponseRequest):
+    new_status = "Accepted" if req.response == "accept" else "Declined"
 
-@app.post("/ask_safety")
-def ask_safety(req: TextRequest):
-    answer = ask_snowflake(req.text)
-    return {"answer": answer}
+    donations_col.update_one(
+        {"_id": ObjectId(req.donation_id)},
+        {"$set": {"status": new_status}}
+    )
+    return {"status": new_status}
+
+# Polling endpoint for Donor to check status
+@app.get("/check_status/{donation_id}")
+def check_status(donation_id: str):
+    item = donations_col.find_one({"_id": ObjectId(donation_id)})
+    if item:
+        return {"status": item.get("status", "Draft"), "driver": item.get("assigned_driver")}
+    return {"status": "not_found"}

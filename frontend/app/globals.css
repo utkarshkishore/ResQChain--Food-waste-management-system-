@@ -1,26 +1,157 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+/* --- RESET & BASICS --- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background: radial-gradient(circle at top left, #0f172a, #064e3b, #000000);
+  background-attachment: fixed;
+  color: white;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* --- LAYOUT SYSTEM --- */
+.app-container { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 280px;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  height: 100vh;
+  z-index: 100;
+}
+
+.main-content {
+  margin-left: 280px;
+  flex: 1;
+  padding: 4rem 6rem;
+  max-width: 1400px;
+}
+
+/* --- COMPONENTS --- */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  padding: 3rem;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  margin-bottom: 2rem;
+}
+
+.hero-text {
+  font-size: 4rem;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(to right, #2dd4bf, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 1.5rem;
+  color: #94a3b8;
+  font-weight: 300;
+  margin-bottom: 3rem;
+  max-width: 600px;
+}
+
+/* --- FORMS --- */
+.form-section { display: grid; grid-template-columns: 1fr 1fr; gap: 4rem; }
+.input-group { margin-bottom: 1.5rem; }
+.label { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2px; color: #2dd4bf; font-weight: 700; margin-bottom: 0.5rem; }
+
+.input-field {
+  width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.15);
+  color: white; padding: 1.25rem; border-radius: 12px; font-size: 1.1rem; outline: none; transition: all 0.3s ease;
+}
+.input-field:focus { border-color: #2dd4bf; background: rgba(0, 0, 0, 0.6); box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.1); }
+
+/* --- UPLOAD BOX --- */
+.upload-box {
+  width: 100%; height: 300px; border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.3s; background: rgba(255,255,255,0.02); position: relative;
+}
+.upload-box:hover { border-color: #2dd4bf; background: rgba(45, 212, 191, 0.05); }
+.upload-box img { width: 100%; height: 100%; object-fit: cover; border-radius: 18px; }
+
+/* --- BUTTONS --- */
+.btn-primary {
+  width: 100%; background: linear-gradient(135deg, #0d9488 0%, #059669 100%); color: white; border: none;
+  padding: 1.5rem; border-radius: 16px; font-size: 1.25rem; font-weight: 700; cursor: pointer; margin-top: 2rem;
+  box-shadow: 0 10px 30px -10px rgba(13, 148, 136, 0.6); transition: transform 0.2s;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 20px 40px -10px rgba(13, 148, 136, 0.8); }
+
+.nav-btn {
+  background: transparent; border: none; color: #94a3b8; padding: 1rem; text-align: left; font-size: 1.1rem;
+  cursor: pointer; border-radius: 12px; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 10px; transition: all 0.2s;
+}
+.nav-btn.active { background: rgba(45, 212, 191, 0.15); color: #2dd4bf; font-weight: 600; }
+.nav-btn:hover:not(.active) { background: rgba(255, 255, 255, 0.05); color: white; }
+
+/* --- CARD GALLERY (Tips & Garden) --- */
+.tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+}
+
+.tip-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  height: 100%; /* Ensure equal height */
+  display: flex;
+  flex-direction: column;
+}
+
+.tip-card:hover {
+  transform: translateY(-8px);
+  border-color: #2dd4bf;
+  box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+}
+
+.tip-image-container {
+  height: 180px;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.tip-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.tip-card:hover .tip-image {
+  transform: scale(1.1);
+}
+
+.tip-content {
+  padding: 1.5rem;
+  flex: 1; /* Pushes content to fill space */
+}
+
+.tip-tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 20px;
+  background: rgba(45, 212, 191, 0.15);
+  color: #2dd4bf;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
 }
