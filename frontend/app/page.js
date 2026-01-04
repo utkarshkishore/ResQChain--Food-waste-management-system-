@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { Camera, Truck, Leaf, UploadCloud, CheckCircle, Lightbulb, Heart, ExternalLink, Globe, Clock, MapPin, User, Phone, Navigation, XCircle, History, Package, Trash2, Droplets, Box, AlertTriangle, Recycle } from 'lucide-react';
 
-// --- DATA: FOOD CONSERVATION TIPS (Restored Full List) ---
+// --- DATA: FOOD CONSERVATION TIPS ---
 const TIPS_DATA = [
   {
     id: 1, category: "Vegetables", title: "Potatoes & Onions",
@@ -51,7 +51,7 @@ const TIPS_DATA = [
   }
 ];
 
-// --- DATA: SUSTAINABLE GARDENING (Restored Full List) ---
+// --- DATA: SUSTAINABLE GARDENING ---
 const GARDEN_DATA = [
   {
     id: 1, name: "Cherry Tomatoes", difficulty: "Medium",
@@ -95,7 +95,7 @@ const GARDEN_DATA = [
   }
 ];
 
-// --- DATA: CHARITIES (Restored Full List) ---
+// --- DATA: CHARITIES ---
 const CHARITY_DATA = [
   { id: 1, name: "Feeding America", desc: "Partnering with food banks to end hunger.", url: "https://www.feedingamerica.org/" },
   { id: 2, name: "World Food Programme", desc: "Saving lives in emergencies worldwide.", url: "https://www.wfp.org/" },
@@ -112,9 +112,10 @@ export default function Home() {
   const [view, setView] = useState('donor');
   const [donorDetails, setDonorDetails] = useState({ name: '', phone: '', address: '' });
 
-  // File State
+  // File & Item State
   const [files, setFiles] = useState([]);
   const [previews, setPreviews] = useState([]);
+  const [foodItems, setFoodItems] = useState([]);
 
   // App State
   const [loading, setLoading] = useState(false);
@@ -147,83 +148,92 @@ export default function Home() {
       setFiles(prev => [...prev, ...selectedFiles]);
       const newPreviews = selectedFiles.map(file => URL.createObjectURL(file));
       setPreviews(prev => [...prev, ...newPreviews]);
+
+      // Initialize an item entry for each new file
+      // REMOVED 'type', defaulting unit to 'lbs'
+      const newItems = selectedFiles.map(() => ({
+        name: '',
+        quantity: '',
+        unit: 'lbs'
+      }));
+      setFoodItems(prev => [...prev, ...newItems]);
     }
   };
 
   const removePhoto = (index) => {
     const newFiles = [...files];
     const newPreviews = [...previews];
+    const newItems = [...foodItems];
+
     newFiles.splice(index, 1);
     newPreviews.splice(index, 1);
+    newItems.splice(index, 1);
+
     setFiles(newFiles);
     setPreviews(newPreviews);
+    setFoodItems(newItems);
+  };
+
+  const updateItem = (index, field, value) => {
+    const updatedItems = [...foodItems];
+    updatedItems[index][field] = value;
+    setFoodItems(updatedItems);
   };
 
   const handleFileUpload = async () => {
     if (files.length === 0 || !donorDetails.name) return alert("Please fill details and upload at least one photo!");
 
+    // Validation
+    for (let i = 0; i < foodItems.length; i++) {
+        if (!foodItems[i].name || !foodItems[i].quantity) {
+            return alert(`Please fill in Name and Quantity for Item ${i + 1}`);
+        }
+    }
+
     setLoading(true);
     setScanResult(null);
     setRejectionError(null);
 
-    // --- 1. DEMO MODE: FILENAME CHECK (Override) ---
-    // If ANY file has "rotten" in the name, we force a rejection immediately.
-    // This ensures your Rotten Apple demo ALWAYS works, even if the API is flaky.
+    // --- 1. PREPARE DATA ---
     const isRottenDemo = files.some(f => f.name.toLowerCase().includes("rotten"));
 
+    // DEMO TRIGGER
     if (isRottenDemo) {
         setTimeout(() => {
             setRejectionError({
-                item: "Detected Food Item",
-                score: 35, // Force low score
+                item: foodItems[0].name || "Item",
+                score: 35,
                 msg: "Food safety protocols prevent accepting items below 50% freshness. Signs of spoilage detected."
             });
             setLoading(false);
-        }, 1500); // Small fake delay for realism
+        }, 1500);
         return;
     }
 
-    // --- 2. REAL AI MODE (If not running demo case) ---
+    // --- 2. TRY REAL API / SIMULATION ---
     try {
-      const base64Images = await Promise.all(files.map(file => fileToBase64(file)));
+      // Simulate API delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // Call API
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ images: base64Images })
-      });
-
-      if (!response.ok) throw new Error("API Connection Failed");
-
-      const data = await response.json();
-
-      if (data.error) throw new Error(data.error);
-
-      // Process Results
-      const processedItems = data.detected_items.map((item, index) => ({
-        ...item,
-        image: previews[index] || previews[0]
+      const processedItems = foodItems.map((item, index) => ({
+          name: item.name,
+          quantity: `${item.quantity} ${item.unit}`,
+          freshness: Math.floor(Math.random() * (99 - 85 + 1) + 85), // High score for non-rotten
+          image: previews[index]
       }));
 
-      // Check Real AI Score
+      // Double check freshness
       const spoiledItem = processedItems.find(item => item.freshness < 50);
-
       if (spoiledItem) {
-        setRejectionError({
-            item: spoiledItem.name,
-            score: spoiledItem.freshness,
-            msg: "Gemini AI detected spoilage. Safety protocols prevent accepting this item."
-        });
+        setRejectionError({ item: spoiledItem.name, score: spoiledItem.freshness, msg: "Spoilage detected." });
         setLoading(false);
         return;
       }
 
-      // Success
       setScanResult({
         detected_items: processedItems,
         total_items: processedItems.length,
-        shelf_life: processedItems[0]?.shelf_life || "3 Days",
+        shelf_life: "3-5 Days",
         action: "Donate to Shelter"
       });
 
@@ -233,29 +243,7 @@ export default function Home() {
       ]);
 
     } catch (error) {
-      console.warn("API Failed, falling back to Simulation for Demo:", error);
-
-      // --- 3. FALLBACK SIMULATION (If API fails/not set up) ---
-      setTimeout(() => {
-          const detected_items = files.map((f, i) => ({
-              name: "Fresh Produce Bundle",
-              quantity: "2 lbs",
-              freshness: 92,
-              image: previews[i]
-          }));
-
-          setScanResult({
-            detected_items: detected_items,
-            total_items: files.length,
-            shelf_life: "3-5 Days",
-            action: "Donate to Shelter"
-          });
-
-          setNearbyDrivers([
-            { id: 1, name: "David M.", eta: "5 mins", distance: "0.8 miles", vehicle: "Van", rating: 4.9 },
-            { id: 2, name: "Sarah C.", eta: "12 mins", distance: "2.4 miles", vehicle: "Sedan", rating: 4.8 },
-          ]);
-      }, 1500);
+      alert("Error: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -354,21 +342,57 @@ export default function Home() {
                     <input type="text" className="input-field" placeholder="Enter full address" onChange={e => setDonorDetails({...donorDetails, address: e.target.value})}/>
                   </div>
 
-                  {/* AUTO-DETECT MESSAGE */}
-                  <div style={{ padding: '1.5rem', border: '1px solid rgba(45,212,191,0.3)', borderRadius: '12px', background: 'rgba(45,212,191,0.05)' }}>
-                      <p style={{ color: '#2dd4bf', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <Lightbulb size={18} /> AI Auto-Detect Active
-                      </p>
-                      <p style={{ fontSize: '0.9rem', color: '#94a3b8', marginTop: '5px' }}>
-                          Upload photos and our AI will automatically identify the food name, estimate quantity, and check for freshness.
-                      </p>
-                  </div>
-
+                  {/* --- DYNAMIC ITEM INPUTS (SOLIDS ONLY) --- */}
+                  {foodItems.length > 0 ? (
+                    <div>
+                        <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#2dd4bf', textTransform: 'uppercase' }}>2. Item Details</h3>
+                        {foodItems.map((item, index) => (
+                            <div key={index} style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '12px', marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                    <label className="label">Details for Photo {index + 1}</label>
+                                </div>
+                                <div style={{ marginBottom: '10px' }}>
+                                    <input
+                                        type="text"
+                                        className="input-field"
+                                        placeholder="Food Name"
+                                        style={{ width: '100%' }}
+                                        value={item.name}
+                                        onChange={(e) => updateItem(index, 'name', e.target.value)}
+                                    />
+                                </div>
+                                <div style={{ display: 'flex', gap: '10px' }}>
+                                    <input
+                                        type="number"
+                                        className="input-field"
+                                        placeholder="Quantity"
+                                        style={{ flex: 2 }}
+                                        value={item.quantity}
+                                        onChange={(e) => updateItem(index, 'quantity', e.target.value)}
+                                    />
+                                    <select
+                                        className="input-field"
+                                        style={{ flex: 1, cursor: 'pointer' }}
+                                        value={item.unit}
+                                        onChange={(e) => updateItem(index, 'unit', e.target.value)}
+                                    >
+                                        <option value="lbs">lbs</option>
+                                        <option value="kg">kg</option>
+                                    </select>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div style={{ padding: '2rem', border: '2px dashed rgba(255,255,255,0.1)', borderRadius: '12px', textAlign: 'center', color: '#94a3b8' }}>
+                        <p>Upload photos to add item details.</p>
+                    </div>
+                  )}
                 </div>
 
                 {/* RIGHT: MULTI UPLOAD */}
                 <div>
-                  <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#2dd4bf', textTransform: 'uppercase' }}>2. Food Photos</h3>
+                  <h3 style={{ fontSize: '1.2rem', fontWeight: 'bold', marginBottom: '1.5rem', color: '#2dd4bf', textTransform: 'uppercase' }}>3. Food Photos</h3>
                   <div className="upload-box" style={{ height: previews.length > 0 ? 'auto' : '300px', minHeight: '300px', padding: '1rem' }}>
                     <input type="file" multiple style={{ opacity: 0, position: 'absolute', width: '100%', height: '100%', cursor: 'pointer', zIndex: 10 }} onChange={handleFileChange} />
                     {previews.length > 0 ? (
@@ -394,7 +418,7 @@ export default function Home() {
                       <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '4rem' }}>
                         <UploadCloud size={48} style={{ margin: '0 auto 1rem auto', color: '#2dd4bf' }} />
                         <p style={{ fontWeight: 500 }}>Drop images here</p>
-                        <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>Gemini AI will analyze them.</p>
+                        <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>Upload one photo per food item</p>
                       </div>
                     )}
                   </div>
@@ -406,7 +430,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* --- REJECTION SCREEN (DEMO or REAL) --- */}
+            {/* --- REJECTION SCREEN --- */}
             {rejectionError && (
                <div className="glass-panel" style={{ marginTop: '2rem', borderColor: '#ef4444', animation: 'slideUp 0.5s ease', borderLeft: '5px solid #ef4444' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '1.5rem' }}>

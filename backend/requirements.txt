@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pymongo
+google-generativeai
+snowflake-connector-python
+Pillow
+python-multipart
